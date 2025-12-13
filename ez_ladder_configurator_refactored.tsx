@@ -158,8 +158,8 @@ function planHeightAndFeet(userInches: number, useFeet: boolean) {
 
 // ────────────────────────────────────────────────────────────────────────────────
 // 2D SVG Visualizer
-function LadderSVG({ totalInches, rungPositions, standoffPositions, splicesFeet, useFeetAnchors, wallOffset }: {
-  totalInches: number; rungPositions: number[]; standoffPositions: number[]; splicesFeet: number[]; useFeetAnchors: boolean; wallOffset: number;
+function LadderSVG({ totalInches, rungPositions, standoffPositions, splicesFeet, useFeetAnchors, wallOffset, parapetEnabled, parapetWidth, parapetHeight }: {
+  totalInches: number; rungPositions: number[]; standoffPositions: number[]; splicesFeet: number[]; useFeetAnchors: boolean; wallOffset: number; parapetEnabled: boolean; parapetWidth: number; parapetHeight: number;
 }) {
   const LADDER_WIDTH_IN = 20, H = 560, pad = 16, innerH = H - pad * 2;
   const topOverhangIn = 6; // always 6" at top
@@ -188,6 +188,7 @@ function LadderSVG({ totalInches, rungPositions, standoffPositions, splicesFeet,
   const snapRung = (inch: number) => (rungPositions.length ? rungPositions.reduce((b, a) => (Math.abs(a - inch) < Math.abs(b - inch) ? a : b)) : inch);
   const snapped = standoffPositions.map(ft => snapRung(ft * 12));
   const topRungY = inchToY(totalInches);
+  const roofY = topRungY;
 
   const DimV = ({ x, y1, y2, label }: { x: number; y1: number; y2: number; label: string }) => {
     const yTop = Math.min(y1, y2), yBot = Math.max(y1, y2), mid = (yTop + yBot) / 2;
@@ -213,6 +214,9 @@ function LadderSVG({ totalInches, rungPositions, standoffPositions, splicesFeet,
     );
   };
   const sideStartX = rightX + 40, wallX = sideStartX + 24, rungCenterX = wallX + wallOffset * scale;
+  const showParapet = parapetEnabled && parapetWidth > 0;
+  const parapetBackX = wallX + Math.max(0, parapetWidth) * scale;
+  const parapetTopY = roofY - Math.max(0, parapetHeight) * scale;
 
   return (
     <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-full">
@@ -265,6 +269,13 @@ function LadderSVG({ totalInches, rungPositions, standoffPositions, splicesFeet,
       <g>
         {/* Structure dashed line clipped to ground */}
         <line x1={wallX} y1={pad} x2={wallX} y2={yGround} stroke="#374151" strokeDasharray="4 4" />
+        {showParapet && (
+          <g>
+            <line x1={wallX} y1={parapetTopY} x2={parapetBackX} y2={parapetTopY} stroke="#dc2626" strokeDasharray="6 4" />
+            <line x1={wallX} y1={roofY} x2={parapetBackX} y2={roofY} stroke="#dc2626" strokeDasharray="6 4" />
+            <line x1={parapetBackX} y1={parapetTopY} x2={parapetBackX} y2={roofY} stroke="#dc2626" strokeDasharray="6 4" />
+          </g>
+        )}
         {/* Ladder rail (profile) */}
         <line x1={rungCenterX} y1={yTopRail} x2={rungCenterX} y2={yBottomRail} stroke="#6b7280" strokeWidth={railWidthPx} />
 
@@ -392,6 +403,9 @@ export default function EzLadderConfigurator() {
   const [accPR, setAccPR] = useState(false);
   const [accGate, setAccGate] = useState(false);
   const [accCover, setAccCover] = useState(false);
+  const [parapetCrossover, setParapetCrossover] = useState(false);
+  const [parapetWidthIn, setParapetWidthIn] = useState(0);
+  const [parapetHeightIn, setParapetHeightIn] = useState(0);
   const [showInfo, setShowInfo] = useState(false);
 
   // Derived user height
@@ -675,6 +689,48 @@ function exportBOMCsv() {
               </div>
             </div>
 
+            {/* Parapet crossover */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between rounded-xl border p-3">
+                <div>
+                  <div className="font-medium">Parapet crossover</div>
+                  <div className="text-xs text-muted-foreground">Add parapet dimensions to visualize dashed guides.</div>
+                </div>
+                <Switch
+                  checked={parapetCrossover}
+                  onCheckedChange={(v) => setParapetCrossover(v)}
+                  aria-label="Toggle parapet crossover"
+                />
+              </div>
+              {parapetCrossover && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label htmlFor="parapet-width">Parapet width (in)</Label>
+                    <Input
+                      id="parapet-width"
+                      type="number"
+                      min={0}
+                      step={0.1}
+                      value={parapetWidthIn}
+                      onChange={(e) => setParapetWidthIn(Number(e.target.value))}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="parapet-height">Parapet height (in)</Label>
+                    <Input
+                      id="parapet-height"
+                      type="number"
+                      min={0}
+                      step={0.1}
+                      value={parapetHeightIn}
+                      onChange={(e) => setParapetHeightIn(Number(e.target.value))}
+                    />
+                    <p className="text-xs text-muted-foreground">Height of 0 sets roof and parapet top equal.</p>
+                  </div>
+                </div>
+              )}
+            </div>
+
             {sectionError && (<div className="text-red-600 text-sm leading-tight bg-red-50 border border-red-200 rounded-md p-2">{sectionError}</div>)}
 
             <div className="pt-2"><Button variant="outline" onClick={runTests}>Run Tests</Button></div>
@@ -686,7 +742,17 @@ function exportBOMCsv() {
           <CardHeader><CardTitle>Visualizer</CardTitle></CardHeader>
           <CardContent>
             <div className="w-full h-[560px] rounded-xl border overflow-hidden">
-              <LadderSVG totalInches={userInches} rungPositions={rungPositions} standoffPositions={standoffPositions} splicesFeet={spliceFeet} useFeetAnchors={!!resolvedFeet} wallOffset={wallOffset} />
+              <LadderSVG
+                totalInches={userInches}
+                rungPositions={rungPositions}
+                standoffPositions={standoffPositions}
+                splicesFeet={spliceFeet}
+                useFeetAnchors={!!resolvedFeet}
+                wallOffset={wallOffset}
+                parapetEnabled={parapetCrossover}
+                parapetWidth={Number(parapetWidthIn) || 0}
+                parapetHeight={Number(parapetHeightIn) || 0}
+              />
             </div>
             <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
               <div className="rounded-lg bg-neutral-100 p-3"><div className="font-medium">Sections</div>{sections.map((s, i) => (<div key={i}>Section {i + 1}: {fmtFeet(s)}</div>))}</div>
